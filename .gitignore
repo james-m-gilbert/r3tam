@@ -1,0 +1,11 @@
+*.pyc
+*.pyo
+*.log
+*.tar.gz
+*.gz
+*.whl
+*.html
+*.js
+*.inv
+*.css
+*.map

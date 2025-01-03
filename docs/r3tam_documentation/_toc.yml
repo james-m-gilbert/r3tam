@@ -1,0 +1,22 @@
+# Table of contents
+# Learn more at https://jupyterbook.org/customize/toc.html
+
+format: jb-book
+root: intro
+options:
+  numbered: true
+chapters:
+- file: discussion
+- file: reference_
+  sections:
+  - file: reference/vertically_stratified_reservoir/restemp
+  - file: reference/mixed_reservoir/longtemp
+#  - file: reference\river\river_regression
+- file: tutorials_
+  sections:
+#  - file: tutorials\shasta_standalone
+   - file: tutorials/keswick_standalone.md
+#  - file: tutorials\sacriver_standalone
+#  - file: tutorials\coupled_historical
+#  - file: tutorials\coupled_forecast
+

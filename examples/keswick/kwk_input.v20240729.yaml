@@ -1,0 +1,83 @@
+RunName: 'test_keswick_only'
+Description: Keswick only
+FacilityName: 'Keswick Reservoir'
+Location:
+  Description: North of Redding, California
+  Latitude: 40.7410 # estimated from GIS, middle of lake upstream of dam
+  Longitude: -122.4095 #estimated from GIS, middle of lake upstream of dam
+SimulationUnits: 'm3degC' #'afdegF' #'m3degC' # or 'afdegF'arameters:
+Parameters:
+  K: 0.005 #0.0001 # 0.000085
+  TT_const: 2.0  # days
+  C1: 0.99 #0.9 # air temp
+  C2: 0.6 #0.77 #0.8 # with prescribed evap -> 0.95
+  C3: 0.65 #0.425 # evap
+#  CriticalDepth: 25 #20. # 30.3795 #27.8541 #38.
+#  CriticalDepthUnits: 'ft'
+#  SeasonalRad: 0.5 #0.1 # seasonal variation adjustment to solar radiation
+  MeanAlbedo: 0.08
+  SeasonalAlbedo: True
+  AlbedoAmplitude: 0.05
+  WindMethod: 'w2'
+  Wind_Func_Params: 
+    awf: 8.0 # 8.5 #9.2 #9.45
+    bwf:  0.35 #0.46 #0.75
+    cwf:  2.0 #2.0 #2.55
+
+Timing:
+  StartDate: '1/1/2000'
+  EndDate: '9/30/2022'
+  TimeStepDays: 1.
+
+Simulation Mode:
+  Hindcast: True
+  SimReleaseSchedule: False
+  CalcEvap: True   #<--- if True, then need to provide dew point time series in inputs
+  ReinitMonth: 1
+  ReinitDay: 1
+
+Initial Condition:
+  Method: 'from_obs'
+
+ElevAreaTable:
+  Units: 'ft'
+  Values: ['inputs/KeswickElevationAreaTable.v20240729.txt']
+ElevStorTable:
+  Units: 'ft'
+  Values: ['inputs/KeswickElevationVolumeTable.v20240729.txt']
+
+TimeSeriesInputs:
+  Inflow: 
+    Path: inputs/keswick_inputTimeSeries.updatev20230425.csv
+    Header: 
+      inflow: 'SHA_Outflow_AF'
+      inflowTemp: 'Shasta_Tailwater_Temp_degF'
+      tribInflow: 'SPP_Inflow_AF'
+      tribInflowTemp: 'SPP_InflowTemp_degF'
+      extraInflow: 'KES_Accretions_AF'
+  Outflow:
+    Path: inputs/keswick_inputTimeSeries.updatev20230425.csv
+    Header:
+      outflow: 'KES_TotalRelease_af'
+      storage: 'KES_Storage_AF'
+  Meteorology:
+    Path: inputs/keswick_inputTimeSeries.updatev20230425.csv
+    Header:
+      airTemp: 'AirTemp_degF'
+      solRad: 'SolRad_gridmet_Wm2'
+      wind: 'Wind_msec'
+      dewpt: 'Tdew_degC'
+      tempTarg: 'KWK_WaterTemp_degF'
+      stoTemp: 'KWK_WaterTemp_degF'
+      evapVol: 'Evap_AF'
+      
+Observations:
+  Outflow:
+    File:
+      Path: inputs/keswick_inputTimeSeries.updatev20230425.csv
+      Header: 
+        flow: 'KES_TotalRelease_af'
+        temperature: 'KWK_WaterTemp_degF'
+        storage: 'KES_Storage_AF'
+
+    

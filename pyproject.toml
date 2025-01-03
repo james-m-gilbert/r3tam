@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "r3tam"
+version = "0.0.1"
+authors = [
+  { name="James Gilbert", email="james.gilbert@ucsc.edu" },
+]
+description = "R3TAM: Rapid Reservoir-River Temperature Assessment Model"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: xxxxxx",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://github.com/james-m-gilbert/R3TAM"
+Issues = "https://github.com/james-m-gilbert/R3TAM/issues"
