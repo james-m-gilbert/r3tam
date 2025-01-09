@@ -638,16 +638,6 @@ def tcd_alloc(resmod, gateDict, qoutPEN, qleakTot,  nPtSinks):
             qrel_frac = gateDict[g]/(gateDict[g]+gateDict[g_below])     
             qrel = qrel*qrel_frac
         
-        # if B < resmod.Outlets[g].GateHeight_m: # gate level is only partially submerged
-        #     qrel = qrel*0.01
-           
-        # if (resmod.TimeStepDate.year < 2010) and g<=2:
-        #     qrel = gate_flow_onoff*(resmod.Outlets[g].A1GT*(dlel_m**(resmod.Outlets[g].B1GT+1))*B**resmod.Outlets[g].G1GT)*gateDict[g]
-        # else:
-        #     if resmod.WSE<=1017.5 and g==3:
-        #         qrel = qoutTCD*0.005
-        #     else:
-        #         qrel = gate_flow_onoff*(resmod.Outlets[g].A1GT*(dlel_m**resmod.Outlets[g].B1GT)*B**resmod.Outlets[g].G1GT)*gateDict[g]
         vel = None
         #dlel = max(0., topElev - ctrel)  # if topElev is below the ctrelevation of the gate level, this will be 0
         #vel = np.sqrt(2.*32.2 * hd)
@@ -737,44 +727,6 @@ def tcd_alloc(resmod, gateDict, qoutPEN, qleakTot,  nPtSinks):
         ptSinkElevs, fracs = distPointSinks(resmod, resmod.WSE, openg[0], nPtSinks)
         gateQ[openg[0]] = [[qoutTCD*f for f in fracs], ptSinkElevs] 
         
-    # for g in openg: # go from bottom gate up 
-    #     if g>minGateLev: # not at bottom gate level
-    #         g_below = g-1
-
-    #     else:
-    #         g_below = -1
-            
-    #     if gateDict[g]>0: # gates open on this level
-    #         if g_below<0 or gateDict[g_below] ==0:  # no gates open on level below
-    #             # just flow through these upper gates of this pair
-    #             ptSinkElevs, fracs = distPointSinks(resmod, topElev, g, nPtSinks)
-    #             #ptSinkElevs3 = [[1021., np.sqrt(32.2*(topElev-1021.))], [950., np.sqrt(32.2*(topElev-1000.))]]
-    #             #fracs3 = [0.1, 0.9]
-    #             gateQ[g] = [[qoutTCD*f for f in fracs], ptSinkElevs]
-    #         else: 
-    #             if len(openg)<3:
-    #                 # flow through two adjacent (one above the other) sets of gates
-    #                 ptSinkElevsUpp, fracsUpp = distPointSinks(resmod, topElev, g, nPtSinks)
-    #                 ptSinkElevsLow, fracsLow = distPointSinks(resmod, topElev, g_below, nPtSinks)
-                    
-    #                 quppfrac= glvlHdVels[g][3] #if there are two levels open, 
-    #                                             # use the bulk distn between levels 
-    #                                             # to allocate flows to sinks in each level
-                    
-    #                 gateQ[g] = [[qoutTCD*f*quppfrac for f in fracsUpp], ptSinkElevsUpp]
-    #                 gateQ[g_below] = [[qoutTCD*f*(1-quppfrac) for f in fracsLow], ptSinkElevsLow]
-                
-    #             else: # 3 or more tcd gate levels are open
-    #                 ptSinkElevsUpp, fracsUpp = distPointSinks(resmod, topElev, g, nPtSinks)
-    #                 ptSinkElevsLow, fracsLow = distPointSinks(resmod, topElev, g_below, nPtSinks)
-                    
-    #                 quppfrac= glvlHdVels[g][3] #if there are two levels open, 
-    #                                             # use the bulk distn between levels 
-    #                                             # to allocate flows to sinks in each level
-                    
-    #                 gateQ[g] = [[qoutTCD*f*quppfrac for f in fracsUpp], ptSinkElevsUpp]
-    #                 gateQ[g_below] = [[qoutTCD*f*(1-quppfrac) for f in fracsLow], ptSinkElevsLow]
-            
         
     return(gateQ)
     
