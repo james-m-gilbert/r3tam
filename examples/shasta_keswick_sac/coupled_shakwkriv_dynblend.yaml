@@ -1,0 +1,67 @@
+Models:
+  sha: configfp1
+  kwk: configfp2
+  riv: configfp3
+
+Timing:
+  StartDate: '1/1/2000'
+  EndDate: '9/30/2022'
+  TimeStepDays: 1.
+Nodes:
+
+Connections:
+  kwk:
+    sha: [outflow,tempw, tempa, solrad]
+    spp: data
+  riv:
+    kwk: [outflow, tempw, tempa]
+
+Temperature_Target:
+  Location: riv:ccr
+  Units: 'degF'
+  #File:
+  #  Path: example/obs/sha_obsTimeSeries.csv
+  #  Header:
+  #    target: 'CCR_Target_degF'
+      #high_tol: 'OutflowTemp_degF'
+      #low_tol: 'Storage_AF'
+  Profiles:
+  Default:
+    1: 99.
+    2: 99.
+    3: 52.
+    4: 51.
+    5: 49.5
+    6: 49.
+    7: 48.5
+    8: 48.5
+    9: 48.5
+    10: 50.5
+    11: 55.
+    12: 99.
+  Upper_Tolerance:
+    1: 99.
+    2: 99.
+    3: 5.0
+    4: 3.5
+    5: 0.75 #2.5
+    6: 0.05 #0.65
+    7: 0.25 #0.35
+    8: 0.25 #0.75
+    9: 0.25 #0.65
+    10: 1.0 #0.75
+    11: 4.0 #3.5
+    12: 99 # 2.5
+  Lower_Tolerance:
+    1: 0.5
+    2: 0.
+    3: 0.
+    4: 2.
+    5: 5.0 #3.0
+    6: 7.
+    7: 7.
+    8: 7.
+    9: 8.
+    10: 3.
+    11: 3.
+    12: 3.

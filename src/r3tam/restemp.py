@@ -414,6 +414,12 @@ class Res(object):
             processes. Default values for each category are 0. Setting either
             to an integer value of 1 or higher will increase the number and
             detail of debug information produced during a simulation.
+            
+        LP_Opt_Blending: boolean
+            Flag to indicate whether blending across open gates is determined
+            via a linear program optimization scheme; this requires a tailwater
+            target temperature be provided; this is set in the input file under
+            the outflow section
 
         Returns
         -------
@@ -470,8 +476,12 @@ class Res(object):
         self.SeasonalRad = 0.9
         self.Wind_Func_Params = {}
 
+        self.LP_Opt_Blending = False # <-- use linear program optimization to blend selective withdrawals to meet target
+                                    # if true, need to provide a target, even if gate operations are set
+            
         self.GateDict = {} # configuration of selective withdrawal gates for current time step
         self.PrevGateDict = {} #config of selective withdrawal gates for previous time step
+        self.PointSinkFracs = {}  # fraction of flow through point sink levels, by time step
 
         # state variabls and storing simulated results
         self.Storage = 0.
@@ -949,13 +959,16 @@ class Res(object):
             if (too_warm or too_cool) and gate_change_ready:
                 #print(f"check gate ops determine it was TooWarm: {too_warm} and TooCool: {too_cool}")
                 need_gate_change = True
+                
+            if resmod.SimulationSpecs.DaysSinceLastGateChange>6:
+                need_gate_change = True
 
             # get available gate levels and gates that can be opened
             gate_levs = outflow.gate_level_opts(resmod)
             # print(gate_levs)
             gate_options = outflow.tcd_gate_open_opts(resmod, gate_levs)
 
-            if this_ttarg == 99:
+            if this_ttarg == 99 or this_ttarg==99*1.8+32:
                 if gate_options == [] and gate_levs==[0]: #  use lowest gate outlet
                     gate_dict = {k: 0 for k,v in resmod.Outlets.items()}
                     gate_dict[0] = resmod.Outlets[0].NumGates
@@ -973,7 +986,7 @@ class Res(object):
                 # try incremental gate search
                 if check_gate_calcs:
                     if increasing_errors2 or increasing_errors:
-                        if resmod.TimeStepDate.month<9:
+                        if resmod.TimeStepDate.month<10: #was 9
                             return(['full', gate_options, targ_data, tdiff, rivDict, bypassFrac])
                         else:
                             return(['incr', gate_options, targ_data, tdiff, rivDict, bypassFrac])
@@ -988,8 +1001,6 @@ class Res(object):
                 if check_gate_calcs:
                     
                     return(['full', gate_options, targ_data, tdiff, rivDict, bypassFrac])
-
-
 
             else:
                 # do the previous steps gate options
@@ -1038,7 +1049,20 @@ class Res(object):
             else:
                 bypassFrac = 0.
 
-            thisTempTarg = -9999
+            if resmod.LP_Opt_Blending:
+                targ_col_name = resmod.Outflow.ColumnMap['tempTarg']
+                # need to set tailwater target temp
+                target_temp_tw = resmod.Outflow.DataFrame.loc[resmod.TimeStepDate,
+                                                              targ_col_name]
+            elif 'tempTarg' in resmod.OutflowColumnMap:
+                targ_col_name = resmod.Outflow.ColumnMap['tempTarg']
+                # need to set tailwater target temp
+                target_temp_tw = resmod.Outflow.DataFrame.loc[resmod.TimeStepDate,
+                                                              targ_col_name]
+            else:
+                target_temp_tw = -9999
+                
+            thisTempTarg = target_temp_tw
             temptol = -9999
             targ_data = [thisTempTarg, temptol, temptol]
 

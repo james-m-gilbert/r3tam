@@ -202,7 +202,7 @@ class River(object):
             this_step = rivmod.TimeStep
             this_date = rivmod.TimeStepDate 
         thismonth = this_date.month #rivmod.TimeStepDate.month
-        
+        #print(this_date)
         nodemod = rivmod.Nodes[selnode]
         bcnode = rivmod.Nodes[nodemod.UpNodeName].BoundaryConditions
         if type(bcnode.DataFrame) ==type(None): # upstream node is simulated - get value from OutflowTemp
@@ -215,6 +215,7 @@ class River(object):
             thisAirT = bc_vec[bcnode.ColumnMap['airtemp']]
             thisWatT = bc_vec[bcnode.ColumnMap['uptemp']]            
             thisQ = bc_vec[bcnode.ColumnMap['upflow']]
+            #print(selnode, thisWatT)
         
         if nodemod.CoeffInterval.lower() == 'monthly':
             thiscoef = nodemod.Coefficients.loc[thismonth,:]
@@ -226,9 +227,11 @@ class River(object):
                 if final:
                     nodemod.OutflowTemp.append(val)
                 else:
-                    if len(nodemod.OutflowTemp)<1:
+                    #print(f"river step: {this_step}")
+                    if len(nodemod.OutflowTemp)<1 or len(nodemod.OutflowTemp)<=this_step: #need second check for cases where full gate search happens at begnning of time step and no river temp ahs been saved yet
                         nodemod.OutflowTemp.append(val)
                     else:
+                        #print(f"\t\tThis step = {this_step}")
                         nodemod.OutflowTemp[this_step] = val
 
             if len(thiscoef)==2:
@@ -241,7 +244,8 @@ class River(object):
                 if final:
                     nodemod.OutflowTemp.append(val)
                 else:
-                    if len(nodemod.OutflowTemp)<1:
+                    #print(f"river step: {this_step}")
+                    if len(nodemod.OutflowTemp)<1 or len(nodemod.OutflowTemp)<=this_step: #need second check for cases where full gate search happens at begnning of time step and no river temp ahs been saved yet
                         nodemod.OutflowTemp.append(val)
                     else:
                         nodemod.OutflowTemp[this_step] = val
@@ -274,7 +278,11 @@ class River(object):
         if len(dts)<len(rivmod.Nodes[selnode].OutflowTemp):
             simtemp = pnd.Series(index=dts,data=rivmod.Nodes[selnode].OutflowTemp[1:])
         elif len(dts)> len(rivmod.Nodes[selnode].OutflowTemp):
-            simtemp = pnd.Series(index=dts[1:],data=rivmod.Nodes[selnode].OutflowTemp)
+            # if exsiting simDates index is longer than the data, then we didn't
+            # simulate the whole period we expected; crop the index to the length
+            # of the data, assuming it starts at index = 1
+            #simtemp = pnd.Series(index=dts[1:],data=rivmod.Nodes[selnode].OutflowTemp)
+            simtemp = pnd.Series(index=dts[0:len(rivmod.Nodes[selnode].OutflowTemp)-1],data=rivmod.Nodes[selnode].OutflowTemp[1:])
         else:
             simtemp = pnd.Series(index=dts,data=rivmod.Nodes[selnode].OutflowTemp)
         

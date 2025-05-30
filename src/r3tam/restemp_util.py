@@ -14,7 +14,8 @@ import datetime as dt
 
 
 #import restemp as srt
-import r3tam.restemp as rt
+#import r3tam.restemp as rt
+from r3tam import restemp as rt
 
 from r3tam.constants import *
 
@@ -521,6 +522,7 @@ def setupSim(resObj, resInputs, projDir, simType='vert'):
         resObj.TempTargetData = {}
         resObj.TempTargetData[ttargLoc] = {'default': ttargDef, 'tol': ttargTol, 'tol_low': ttargLowTol}
 
+    #if 
 
 def setupCalib(resObj, resInputs):
     
@@ -776,6 +778,15 @@ def setParams(resObj, inputs):
         resObj.SeasonalRad = float(params['SeasonalRad'])
     else:
         resObj.SeasonalRad = 1.
+        
+    if 'BlendingMethod' in params:
+        if params['BlendingMethod'] ==1:
+            resObj.LP_Opt_Blending = True
+            print("\n\t\t---Setting blending option to LP Optimization\n")
+        elif params['BlendingMethod'] ==0:
+            resObj.LP_Opt_Blending = False
+        else:
+            resObj.LP_Opt_Blending = False
     
 def setLongParams(resObj, inputs):
     params= inputs['Parameters']
@@ -958,6 +969,10 @@ def getTimeSeries(resmod, inputs):
             else:
                 df['tribInflow_final'] = [_ for _ in df[hdrDict['tribInflow']]]
                 hdrDict['tribInflow_final_units'] = 'CUBIC_METERS_PER_DAY'
+        else:
+            df['extraInflow_final'] = [0 for _ in df.index]
+            hdrDict['extraInflow_final_units'] = 'cubic_meters_per_day'
+            hdrDict['extraInflow_final'] = 'extraInflow_final'
         
     if 'Outflow' in  tsInfo:
         fdata = tsInfo['Outflow']
@@ -1029,6 +1044,20 @@ def getTimeSeries(resmod, inputs):
                 df['Observed_Storage'] = [_ for _ in df[hdrDict['storage']]]
                 hdrDict['storage_obs'] = 'Observed_Storage'
                 
+        
+        
+        if 'extraOutflow' in hdrDict: # in cases where there are specified withdrawals from reservoir (as with CalSim)
+            extraOutflow_units = hdrDict['extraOutflow'].split("_")[-1].upper()
+            if extraOutflow_units not in ['AF','ACRE-FEET','AC-FT','AC_FT','ACRE_FEET','ACFT']:
+                # assuming extra outflow is provided in acre-feet, if not, throw
+                # an error
+                raise BaseException("Extra Outflow not defined in units of acre-feet. Try again")
+            
+            df['DirectDiversions'] = [_ for _ in df[hdrDict['extraOutflow']]]
+            hdrDict['extraOutflow'] = 'DirectDiversions'
+        else:
+            df['DirectDiversions'] = [0 for _ in df.index]
+            hdrDict['extraOutflow'] = 'DirectDiversions'
         
         print("assigning outflow data")
         hdrDict['outflow_final'] = 'OutflowTotal'

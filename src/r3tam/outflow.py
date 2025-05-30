@@ -15,7 +15,7 @@ import datetime as dt
 import pandas as pnd
 
 import copy
-
+from scipy.optimize import linprog
 
 def init_check_target(resmod, outvec):
     
@@ -506,6 +506,8 @@ def distPointSinks(resmod,topElev, outletID, nPtSinks,**kwargs):
 
         for npt in range(nPtSinks):
             elev = thisBotElev+npt*delz
+            # if outletID==3:
+            #     print(f"Point sink elev: {elev} ft")
             if elev<topElev: # only assign sink if below water surface elevation
                 ptSinkElevs.append([elev, np.sqrt(2*32.2*(topElev-elev))])    
                     
@@ -514,11 +516,16 @@ def distPointSinks(resmod,topElev, outletID, nPtSinks,**kwargs):
     
     return([ptSinkElevs,fracs])
 
-def tcd_alloc(resmod, gateDict, qoutPEN, qleakTot,  nPtSinks):
+def tcd_alloc(resmod, gateDict, qoutPEN, qleakTot,  nPtSinks, lp_opt=False,
+              outqLyr={}, qleakDict={}, rivDict={},
+              **kwargs):
     '''
         given total penstock flow and leakage, allocate
         non-leakage outflow to gate levels based on prescribed operations
             -based on RAFT approach (Daniels et al 2018, NMFS Tech Memo)
+            
+        outqLyrDist={}, qleakDict={}, rivDict={} are only used if lp_opt=True
+        so that the LP opt process can estiamte outflow temperatures
     '''
     # set the debug release level (0,1,2)
     debug = resmod.Debug['Release']
@@ -661,6 +668,8 @@ def tcd_alloc(resmod, gateDict, qoutPEN, qleakTot,  nPtSinks):
 
     len_openg = len(openg) # number of open gate levels
     
+    fracs_by_level = {}
+    
     if len_openg==1: # just flow through a single gate level
         if adj_sdg_ptsinks:
             if debug>1:
@@ -677,6 +686,8 @@ def tcd_alloc(resmod, gateDict, qoutPEN, qleakTot,  nPtSinks):
             ptSinkElevs, fracs = distPointSinks(resmod,  resmod.WSE, openg[0], nPtSinks)
 
         gateQ[openg[0]] = [[qoutTCD*f for f in fracs], ptSinkElevs]
+        
+        fracs_by_level[openg[0]] = [1] #one gate level open - all flow through this
         
     elif len_openg==2: # two gate levels are open
         if openg[0]==2 and adj_mid_ptsinks:
@@ -706,6 +717,9 @@ def tcd_alloc(resmod, gateDict, qoutPEN, qleakTot,  nPtSinks):
         
         gateQ[openg[0]] = [[qoutTCD*f*quppfrac for f in fracsUpp], ptSinkElevsUpp]
         gateQ[openg[1]] = [[qoutTCD*f*(1-quppfrac) for f in fracsLow], ptSinkElevsLow]
+        
+        fracs_by_level[openg[0]] = [fracsUpp] #fraction of flow through top level
+        fracs_by_level[openg[1]] = [fracsLow] # fraction of flow through lower level
     
     elif len_openg==3: # rare instance where 3 levels are open at once
         ptSinkElevsUpp, fracsUpp = distPointSinks(resmod,  resmod.WSE, openg[0], nPtSinks)
@@ -718,7 +732,11 @@ def tcd_alloc(resmod, gateDict, qoutPEN, qleakTot,  nPtSinks):
                        ptSinkElevsMid]
         gateQ[openg[2]] = [[qoutTCD*f*glvlHdVels[openg[2]][3] for f in fracsLow], 
                        ptSinkElevsLow]
-    
+        
+        fracs_by_level[openg[0]] = [fracsUpp] #fraction of flow through top level
+        fracs_by_level[openg[1]] = [fracsMid] # fraction of flow through middle level
+        fracs_by_level[openg[2]] = [fracsLow]
+        
     elif len_openg==0:
         print(f"\n--{resmod.TimeStepDate}: No open TCD gate this time step")
     else:
@@ -727,10 +745,421 @@ def tcd_alloc(resmod, gateDict, qoutPEN, qleakTot,  nPtSinks):
         ptSinkElevs, fracs = distPointSinks(resmod, resmod.WSE, openg[0], nPtSinks)
         gateQ[openg[0]] = [[qoutTCD*f for f in fracs], ptSinkElevs] 
         
+        fracs_by_level[openg[0]] = [1]
+        
+    # revise the distribution of flows according to a LP-opt solution
+    # considering open gates, point sink elevations, and target temp
+    
+    if lp_opt==True:
+        if 'temp_targ' in kwargs:
+            temp_targ = kwargs['temp_targ']
+            if temp_targ >=99:
+                return(gateQ)
+            #print(f'\n\t\t...target is: {temp_targ}')
+        else:
+            raise BaseException("Temperature target ('temp_targ') value not provided to 'tcd_alloc' function")
+            
+        
+        # set the constraints on the outlets - assume if the gate is open, it can have
+        # some minimum fraction (0.01) up to 1 of the flow
+        target_bounds = [] # constraints for each gate & pt sink
+        gate_temps = [] # temperatures at each gate & pt sink
+        ps_elevs = [] # point sink elevations
+        ps_temps = [] # temperatures at each point sink
+        
+        # get current temperature profile for easy interpolation lookup
+        modElevs = [v.CtrElev for l, v in resmod.Layers.items()]
+        these_temps = []
+        for l, v in resmod.Layers.items():
+            these_temps.append(v.Temp)
+        temp_prof = pnd.DataFrame(index=modElevs, data=these_temps)
+        
+        #print(f"There are {len(gateQ[3][0])} point sinks at the upper gate")
+        for g in gateQ:
+            if len(gateQ[g])>0: # if this gate level is not null (i.e. it is active)
+                for ps in gateQ[g][1]: # iterate through point sink elevatoins
+                    target_bounds.append([0.01, 1])
+                    ps_elevs.append(ps[0])
+            # if gateDict[g] ==0:
+            #     target_bounds[g] == [0., 0.0]
+            # else:
+            #     target_bounds[g] = [0.01,1]
+            
+        #print("Point sink elevations:")
+        #print(ps_elevs)
+        #print(modElevs)
+        #print(these_temps)
+        ps_temps = np.interp(ps_elevs, modElevs, these_temps) #.reverse() needed because np.interp needs values in ascending order
+        
+        #print("Interpolated temps:")
+        #print(ps_temps)
+
+        # build the inputs to the lp problem
+        lhs_eq = [[0]+len(ps_temps)*[1],  
+                   [0]+[pt for pt in ps_temps]]
+        # print("A_EQ:")
+        # print(lhs_eq)
+        
+        rhs = [1.0, temp_targ]
+        clist = [-1*temp_targ]+[pt for pt in ps_temps]
+        # print("c: ")
+        # print(clist)
+        
+        bounds = [[0,1]] + target_bounds
+        
+        # print("Bounds:")
+        # print(bounds)
+        
+        # print("RHS")
+        # print(rhs)
+        
+        # do the LP optimzation
+        opt_ = linprog(c=clist,A_eq=lhs_eq, b_eq=rhs,
+                       bounds=bounds, method='highs-ds' )
+        
+        #print(resmod.TimeStepDate.isoformat() + "_" + str(opt_.x)) #@debug
+
+        if type(opt_.x)!=type(None): # there is a solution given constraints
+            counter=1
+            for g in gateQ:
+                if len(gateQ[g])>0:
+                    new_fracs = []
+                    for ps in gateQ[g][1]:
+                        new_fracs.append(opt_.x[counter]) # skip 0-index value in opt_.x data because that's a constant
+                        counter+=1
+                    gateQ[g][0] = [qoutTCD*nf for nf in new_fracs]
+
+        else: # if opt_x==None, then there is no solution given constraints - either too warm or too cool to achieve
+        # in this case, default to existing distribution (i.e. don't need to do anythin)
+            #pass
+            
+            #print(f"{resmod.TimeStepDate.isoformat()}\t-- No initial lp-opt solution found...") #@debug
+            for g in gateQ:
+                if len(gateQ[g])>0: # if this gate level is not null (i.e. it is active)
+                    cumul_frac = 0.0
+                    fracs = []
+                    num_pt_sinks = len(gateQ[g][1])
+                    #fracs = [1/num_pt_sinks for nps in range(num_pt_sinks)]
+                    if rhs[1]>max(ps_temps):  #target is warmer than warmest point sink
+                        # put max amount of water through highest point sinks
+                        for ips, ps in enumerate(gateQ[g][1]): # iterate through point sink elevatoins
+                            
+                            if ips < num_pt_sinks-1:
+                                fracs.append(0.01) # TODO: Change so it can keep track of user-specified different minfracs
+                                cumul_frac += 0.01
+                                #print(f'{resmod.TimeStepDate.isoformat()}\tAdjusting WARM gate {g} point sink {ips} at elevation {ps[0]} to 0.01...') #@debug
+                            else:
+                                fracs.append( 1 - cumul_frac)
+                                #print(f'{resmod.TimeStepDate.isoformat()}\tAdjusting WARM gate {g} point sink {ips} at elevation {ps[0]} to {1 - cumul_frac}...') #@debug
+                    
+                    else: # target is colder than coldest point sink
+                        # put max amount through lowest point sinks
+                       
+                        for ips, ps in enumerate(gateQ[g][1]): # iterate through point sink elevatoins
+                            #print(f't\tAdjusting COOL gate {g} point sink {ips} at elevation {ps}...')
+                            if ips == 0: #num_pt_sinks-1:
+                                fracs.append(1-(num_pt_sinks-1)*0.01) # TODO: Change so it can keep track of user-specified different minfracs
+                                
+                                #print(f'{resmod.TimeStepDate.isoformat()}\tAdjusting COOL gate {g} point sink {ips} at elevation {ps[0]} to {1-(num_pt_sinks-1)*0.01}...') #@debug
+                            else:
+                                fracs.append( 0.01) 
+                                #print(f'{resmod.TimeStepDate.isoformat()}\tAdjusting COOL gate {g} point sink {ips} at elevation {ps[0]} to 0.01...')  #@debug
+                                
+                            # make sure total fraction = 1  # TODO - make this better
+                            tot_fracs = sum(fracs)
+                            if abs(tot_fracs - 1.0) > 0.00001:
+                                fracs = [f* 1.0/tot_fracs for f in fracs]
+                                
+                    
+                    #print(glvlHdVels[g][3])  #@debug
+                    # print("\n\t\t---Adj Est Fracs:")  #@debug
+                    # print(fracs)  #@debug
+                    gateQ[g][0] = [qoutTCD*f*glvlHdVels[g][3] for f in fracs]
+                    
+        # check the distribution fo flows by layer
+        outqLyrDist_ = get_outflows_by_layer(resmod, gateQ, outqLyr,
+                                            qleakDict, rivDict, dz=0)
+        
+        # get the temperature of just leakage components so this can be used
+        # to adjust TCD target
+        totQ_ = 0.
+        tmplq_ = {}
+        for l in resmod.Layers:
+            tmplq_[l]=0.
+        for rri, rrv in outqLyrDist_.items():
+            if rri=='Release_by_Outlet_Type':
+                continue
+            #print(rri, rrv)
+            if 'l' in rri: # a leakage component
+                for rli, rlv in rrv[0].items(): # loop through the layer assignments for this outlet flow
+                    if np.isnan(rlv):
+                        print("Calc'd outflow for %s is %0.2f" %(rri, rlv))
+                        return
+                    tmplq_[rli] += rlv
+                    totQ_ += rlv
+        [lkg_totOutQ, lkg_outTemp, lkg_totOutE] = outflow_dist_forGateSelect(resmod,tmplq_)
+        
+        # update target to take into account leakage
+        temp_targ_TCD = (temp_targ*(lkg_totOutQ + qoutTCD)-(lkg_totOutE))/qoutTCD
+        #print(f"\n\t\t\tOld and New temp target for TCD: {temp_targ} -> {temp_targ_TCD}") #@debug
+        
+        rhs2 = [1.0, temp_targ_TCD]
+        
+        new_ps_temps = []
+        openg = [g for g in gateQ if gateQ[g]!=[]]            
+        for og in openg: #iterate through each open gate level
+            ptsnk_cntr=1
+            for qstr, [outletEl,sqrtgh] in list(zip(gateQ[og][0],gateQ[og][1])): # iterate through point sinks for each gate
+            
+                outByLyr = outqLyrDist_[str(og)+'g'+str(ptsnk_cntr)][0] #get the layer withdrawals for this point sink
+                
+                totq_ = 0.0
+                tote_ = 0.0
+                for l in outByLyr: # iterate through layers in wd for this point sink
+                    totq_ += outByLyr[l]
+                    tote_ += outByLyr[l]*resmod.Layers[l].Temp
+                ps_temp_ = tote_/totq_
+                new_ps_temps.append(ps_temp_)
+                ptsnk_cntr+=1
+        
+        # update the LHS of the lp input
+        lhs_eq2 = [[0]+len(new_ps_temps)*[1],  
+                   [0]+[pt for pt in new_ps_temps]]
+
+        #print(new_ps_temps)
+        
+        # 20250423 - attempting to deal with missed targets - adjust target
+        # so that it's within the range of point sinks
+        # if temp_targ_TCD < min(new_ps_temps): # target is too cold
+        #     temp_targ_TCD2 = min(new_ps_temps) + 0.15
+        # elif temp_targ_TCD > max(new_ps_temps): # target is too warm
+        #     temp_targ_TCD2 = max(new_ps_temps) - 0.15
+        # else:
+        #     temp_targ_TCD2 = temp_targ_TCD
+            
+        # rhs2 = [1.0, temp_targ_TCD2]
+        
+        opt_2 = linprog(c=clist,A_eq=lhs_eq2, b_eq=rhs2,
+                       bounds=bounds, method='highs-ds' )        
+        
+        if type(opt_2.x)!=type(None): # there is a solution given constraints
+            #print("\n\t\t***Updated point sink flow allocations*****")    #@debug
+            counter=1
+            for g in gateQ:
+                if len(gateQ[g])>0:
+                    new_fracs = []
+                    for ps in gateQ[g][1]:
+                        new_fracs.append(opt_2.x[counter]) # skip 0-index value in opt_.x data because that's a constant
+                        counter+=1
+                    gateQ[g][0] = [qoutTCD*nf for nf in new_fracs]
+
+        else:
+            
+            #print(f"Could not find lp-opt solution on {resmod.TimeStepDate.isoformat()}") #@debug
+            #print(new_ps_temps)
+            
+            if resmod.TimeStepDate-dt.timedelta(1) in resmod.PointSinkFracs:
+
+                # use the last set of gateQ instead
+                prev_psfrac = resmod.PointSinkFracs[resmod.TimeStepDate-dt.timedelta(1)]
+                
+                # check that prev gate levels and this gate levels match
+                prev_gate_levs = [g for g in prev_psfrac if len(prev_psfrac[g])>0]
+                this_gate_levs =  [g for g in gateQ if gateQ[g]!=[]] #[g for g in gateQ[g] if len(gateQ[g])>0]
+                #print(gateQ)
+                if sorted(prev_gate_levs)==sorted(this_gate_levs):
+                    for g in gateQ:
+                        if g in this_gate_levs:
+                            new_fracs = []
+                            counter=0
+                            for ps in gateQ[g][1]:
+                                #print(f'counter: {counter}')
+                                #print(prev_psfrac)
+                                if len(prev_psfrac[g])<counter:
+                                    new_fracs.append(prev_psfrac[g][counter]) 
+                                counter+=1
+                                
+                            gateQ[g][0] = [qoutTCD*nf for nf in new_fracs]
+            else:
+                # nothing else we can do for now
+                # default back to existing gate ops
+                pass
+        
+        # save the point sink levels fractions for debugging
+        save_ps_fracs = {k:[] for k,v in resmod.Outlets.items()}
+        for g in gateQ:
+            if len(gateQ[g])>0:
+                save_ps_fracs[g] = [ff/qoutTCD for ff in gateQ[g][0]]
+        resmod.PointSinkFracs[resmod.TimeStepDate] = save_ps_fracs
         
     return(gateQ)
     
+# def tcd_alloc_lp(resmod, target_temp, gateDict, qoutPEN, qleakTot, nPtSinks):            
+#     """
+#     Calculate distribution to TCD gates/ports according to a tailbay target 
+#     temperature, using an linear programming formulation
+
+#     This is adapted from the method implemented in USBR's WTMP, described in 
+#     the 2023 Model Development report
+    
+#     Parameters
+#     ----------
+#     resmod : TYPE
+#         DESCRIPTION.
+#     target_temp : TYPE
+#         DESCRIPTION.
+#     gateDict : TYPE
+#         DESCRIPTION.
+#     qoutPEN : TYPE
+#         DESCRIPTION.
+#     qleakTot : TYPE
+#         DESCRIPTION.
+#     nPtSinks : TYPE
+#         DESCRIPTION.
+
+#     Returns
+#     -------
+#     gateQ   : dict
+#         A dictionary of flow amounts (values) for each open gate/port (keys)
+
+#     """
+    
+#     # set the debug release level (0,1,2)
+#     debug = resmod.Debug['Release']
+    
+#     qoutTCD = qoutPEN - qleakTot
+#     gateQ = {k:[] for k,v in resmod.Outlets.items()}  # dictionary of outflows at each gate
+#     totGatesOpen = sum(gateDict.values())
+    
+#     maxGateLev = max(gateDict)
+#     minGateLev = min(gateDict)
+    
+#     ### NOTE: Shasta-specific code - adjusting side gate elevation vvvvv
+#     # is this the first use of side gates in isolation?
+#     if resmod.TimeStep==0:
+#         prevGate = gateDict
+#     else:
+#         prevGate = resmod.PrevGateDict # sgateDict #resmod.Operations.GateOps[resmod.SimDates[resmod.TimeStep-1]]
+        
+#     if (gateDict[0]>0): # and (sum([prevGate[3],prevGate[2],prevGate[1]])<=0):
+#         # this is the first time the side gates are used 
+#         resmod.Operations.sidegate_only_cntr += 1
+#         adj_sdg_ptsinks = True
+        
+#         # side gate top point sink elevation adjustment
+#         sdgadjlevel_max = 832 
+#         Ladj = sdgadjlevel_max - resmod.Outlets[0].TopElevFt
+#         kadj = 0.4 # steepness
+#         x0 = 45 #90 # midpoint (days) of logistic curve
+        
+#         v = Ladj/(1+np.exp(-1*kadj*(resmod.Operations.sidegate_only_cntr-x0)))
+#         sdgadjlevel = sdgadjlevel_max-v
+        
+#         # sdgadjtime = 15
+#         # sdgidx = min(resmod.Operations.sidegate_only_cntr, sdgadjtime)
+#         # sdgadjlevel = min(resmod.WSE, (sdgadjlevel_max +
+#         #                                (resmod.Outlets[0].TopElevFt-sdgadjlevel_max)
+#         #                                *sdgidx/sdgadjtime))
+#         if debug>1:
+#             print(f"\nAdj sidegate level: {sdgadjlevel} ft")
+#             print(f"Gate dict: 3: {gateDict[3]} | 2: {gateDict[2]} | 1: {gateDict[1]} | 0: {gateDict[0]}")
+#     else:
+#         resmod.Operations.sidegate_only_cntr = 0
+#         adj_sdg_ptsinks = False
+#     ### NOTE: Shasta-specific code - adjusting side gate elevation ^^^^^
+        
+#     ### NOTE: Shasta-specific code - adjusting middle gate elevation vvvvv
+#     # testing lowering of middle gate point sinks after being open for long 
+#     # periods (>60 days)
+#     if resmod.TimeStepDate.timetuple().tm_yday==1 or resmod._time==0: # first day of the year, reset counter
+#         resmod.Operations.midgatedays = 0
+#     else:
+#         if gateDict[2] >0:
+#             resmod.Operations.midgatedays += 1
+#         else:
+#             resmod.Operations.midgatedays = 0
+#     #gate_history = resmod.Operations.GateOps
+#     if resmod.Operations.midgatedays > 60:
+#         adj_mid_ptsinks = True
+#         midadjlevel = resmod.Outlets[2].CtrElevFt
+#     else:
+#         adj_mid_ptsinks = False
+#     ### NOTE: Shasta-specific code - adjusting middle gate elevation ^^^^^
+    
+#     # get heads at centerline of each gate level
+#     #tw_elev = 586. # feet; from x-sect drawing of penstock 4, p78 in pdf of (United States Army Corps of Engineers, 1977)
+#     glvlHdVels = {}
+#     for g in gateDict:
+        
+#         # set head, velocity, and relative flow amount to zero (0) if gate isn't open
+#         if gateDict[g]<=0:
+#             glvlHdVels[g] = [ 0., 0., 0.]
+#             continue
+        
+#         if g>minGateLev: # not at bottom gate level
+#             g_below = g-1
+#         else:
+#             g_below = -1
+        
+#         gate_flow_onoff = 1
+        
+#         if resmod.CheckMinHead:
+#             # deactivate gates if prescribed minimum head requirements aren't met
+#             if g_below<0 or gateDict[g_below] ==0:  # no gates open on level below
+#                 if resmod.WSE >= resmod.Outlets[g].MinHead + resmod.Outlets[g].BotElevFt:
+#                     gate_flow_onoff = 1  # no gates open below, but meeting head requirement
+#                 else:
+#                     gate_flow_onoff = 0 # no gates open below and NOT meeting head reqmt - flow should be 0 thru gate
+#                     # update gate dict for this time step accordingly
+#                     gateDict[g] = 0
+#             else:
+#                 if gateDict[g_below]>0: # there's a gate open below
+#                     if resmod.WSE >= resmod.Outlets[g].MinHead + resmod.Outlets[g].BotElevFt: 
+#                         # there's water covering outlet gate and there's a gate open below
+#                         gate_flow_onoff = 1  
+#                     else:
+#                         gate_flow_onoff = 0 
+#                         # update gate dict for this time step accordingly
+#                         gateDict[g] = 0
+#                 else:
+#                     gate_flow_onoff = 0  # there are no gates open below
+#                     # update gate dict for this time step accordingly
+#                     gateDict[g] = 0
+                
             
+#         # calculate the head above the outlet/get bottom elevation; see if it's
+#         # more than the gate height/opening
+#         B = min((resmod.WSE-resmod.Outlets[g].BotElevFt)*FTtoM, resmod.Outlets[g].GateHeight_m)
+#         B = max(B, 0.0)
+        
+#         # calculate the head difference from the penstock elevation
+#         dlel_m = max(0.0, resmod.WSE*FTtoM - max(resmod.Outlets[g].BotElevFt*FTtoM,resmod.PenstockElevation_m))
+
+        
+        
+#         qrel = gate_flow_onoff*(resmod.Outlets[g].A1GT*
+#                                 (dlel_m**(resmod.Outlets[g].B1GT))*
+#                                 B**resmod.Outlets[g].G1GT)*gateDict[g]
+    
+#         glvlHdVels[g] = [dlel_m, None, qrel] # head diff; velocity (None, for now), relative q (will be changed later)
+        
+        
+#     # set the constraints on the outlets - assume if the gate is open, it can have
+#     # some minimum fraction (0.01) up to 1 of the flow
+#     target_bounds = [] # constraints for each gate
+#     gate_
+#     for g in gateDict:
+#         if gateDict[g] ==0:
+#             target_bounds[g] == [0., 0.0]
+#         else:
+#             target_bounds[g] = [0.01,1]
+    
+#     # go through gates again, set the bounds & get the temps at each gate level
+#     # assume gate_dict goes from top->down
+#     for g in gate_dict:
+        
+        
+#     return(gateQ)
             
 def selective_withdrawal(resmod, qout, bypass_frac, rivDict,
                          nPtSinks=1, dz=1,
@@ -753,8 +1182,12 @@ def selective_withdrawal(resmod, qout, bypass_frac, rivDict,
     else:
         gateDict = resmod.GateDict
     
+
+        
     totOutQ = 0.
     totOutE = 0.
+    
+    resmod.getWSE() # check WSE and top layer in case it needs updating
     
     topLyr = resmod.TopLyr
     topElev = resmod.WSE  # get the surface elevation calc'd at the beginning of this time step
@@ -808,7 +1241,22 @@ def selective_withdrawal(resmod, qout, bypass_frac, rivDict,
     outqLyrDist['Release_by_Outlet_Type'] = [qoutPEN, qoutRIV, qoutSPILL]
     
     # Step 3. now calculate the bulk flow through selective withdrawal levels
-    gateQ = tcd_alloc(resmod, gateDict, qoutPEN, qleakTot, nPtSinks) #removed topElev from args - use resmod.WSE  for up-to-date data
+    # set whether to use LP optimization for tcd mixing, set target temp
+    if resmod.LP_Opt_Blending:
+        targ_col_name = resmod.Outflow.ColumnMap['tempTarg']
+        # need to set tailwater target temp
+        target_temp_tw = resmod.Outflow.DataFrame.loc[resmod.TimeStepDate,
+                                                      targ_col_name]
+        gateQ = tcd_alloc(resmod, gateDict, qoutPEN, qleakTot, nPtSinks, 
+                          lp_opt=True, temp_targ = target_temp_tw, 
+                          outqLyr=outqLyrDist, qleakDict=qleakDict,
+                          rivDict=rivDict) 
+    else:
+        gateQ = tcd_alloc(resmod, gateDict, qoutPEN, qleakTot, nPtSinks, lp_opt=False) #removed topElev from args - use resmod.WSE  for up-to-date data
+    
+    #print("\nFinished TCD alloc - gateQ is:")
+    #print(gateQ)
+   # print('-----------------------------------')
     
     # find which selective withdrawal ports, g, are currently open
     openg = [g for g in gateQ if gateQ[g]!=[]]
@@ -954,7 +1402,168 @@ def selective_withdrawal(resmod, qout, bypass_frac, rivDict,
     return(outqLyrDist)
 
 
+def get_outflows_by_layer(resmod, gateQ, outqLyrDist,qleakDict,rivDict, dz=1):
+    # outqLyrDist needs to be passed through from selective_withdrawal function 
+    # to tcd_alloc or whatever function is calling get_outflows_by_layer
+    # same with qleakDict and rivDict
+    
+    # set the debug release level (0,1,2)
+    debug = resmod.Debug['Release']
+    
+    topLyr = resmod.TopLyr
+    topElev = resmod.WSE  # get the surface elevation calc'd at the beginning of this time step
+    
+    qoutRIV = outqLyrDist['Release_by_Outlet_Type'][1]
+    qoutPEN = outqLyrDist['Release_by_Outlet_Type'][0]
+    qoutSPILL = outqLyrDist['Release_by_Outlet_Type'][2]
+    
+    # dz = vertical resolution, in meters
+    if dz > 0:       
+        # do calculation of withdrawal envelope on a finer vertical grid
+        lelev_m = resmod.Layers[0].MinElev*FTtoM
+        uelev_m = resmod.WSE*FTtoM
+        grid = np.arange(lelev_m, uelev_m+dz/2, dz)
+        #grid=np.append(grid, uelev_m)
+        temp1 = [resmod.Layers[k].Temp for k in resmod.Layers]  #temperature on original grid
+        rho1 = [resmod.Layers[k].Rho for k in resmod.Layers]  # density on original grid
+        elev1 = [resmod.Layers[k].CtrElev*FTtoM for k in resmod.Layers]  # elevation of original grid
+        elev1 = elev1 + [resmod.WSE]
+        rho1 = rho1 + [rho1[-1]]
+        temp1 = temp1 + [temp1[-1]]
+        # interpolate original grid values to refined grid
+        rho2 = np.interp(grid, elev1, rho1)
+        if np.isnan(rho2[-1]):
+            rho2[-1] = rho2[-2]
+        temp2 = np.interp(grid, elev1, temp1)
+        resmod.FineGrid = grid
+        resmod.RhoFG = rho2
+        resmod.TempFG = temp2
+        resmod.LyrMapFG = np.round(np.interp(grid, elev1,list(range(resmod.nLyrs+1))))
 
+    else:
+        resmod.FineGrid = []
+    
+    
+    # find which selective withdrawal ports, g, are currently open
+    openg = [g for g in gateQ if gateQ[g]!=[]]
+    
+    # outlet-layer assignments - layer with bottom elevation at or above 
+    # outlet centerline elevation is assigned to that outlet level
+    for og in openg:
+        ptsnk_cntr=1
+        for qstr, [outletEl,sqrtgh] in list(zip(gateQ[og][0],gateQ[og][1])):
+            if debug >=1:
+                print("Open Gate: %d - Outlet Elevation: %0.1f" %(og, outletEl))  #type(outletEl), 
+        
+            if qstr >0:
+                # just loop over the layers between the bottom
+                # and central assignements for this outlet - take
+                # the highest one with water
+                oLyr = resmod.Outlets[og].MinLayer
+                for l in range(resmod.Outlets[og].MinLayer, resmod.Outlets[og].MaxLayer+1): #CtrLayer+1):
+                    if (outletEl <= resmod.Layers[l].MaxElev) & \
+                       (outletEl >= resmod.Layers[l].MinElev) & \
+                       (resmod.Layers[l].Vol > 0.):
+                        oLyr = l
+                        
+                if (len(gateQ[og][0])==1) & (oLyr == resmod.Outlets[og].MinLayer):
+                    outletEl = resmod.Outlets[og].BotElevFt
+
+                if debug>=2:
+                    print("Calling wd_env for gates with parameters:   %d, %0.2f ft, %0.2f AF, %d, %0.2f ft" %(oLyr, outletEl, qstr, topLyr, topElev))
+                
+                if dz>0:
+                    [outByLyr, totOutThisGate] = wd_env2(resmod, outletEl, qstr, topLyr, grid, rho2, debug=debug)
+                    #print(totOutThisGate)
+                else:
+                    [outByLyr, totOutThisGate] = wd_env(resmod, oLyr, outletEl, qstr,topLyr, topElev, debug=debug) 
+                
+                if abs(totOutThisGate - qstr)>TOL_AF:
+                    print("WARNING!! Calculated outflow at gate %s and point sink %s does not match what was prescribed!" %og)
+                    print("WARNING!! Calculated outflow: %0.4f  --- Prescribed outflow %0.4f" %(totOutThisGate, qstr))
+                outqLyrDist[str(og)+'g'+str(ptsnk_cntr)] = [outByLyr]  # adding 'g' to key to indicate gate
+                ptsnk_cntr +=1
+    
+    # now do the outflow distributions for the leakage zones
+    for ol in qleakDict:
+        #lkgElev = resmod.Leakages[ol].CtrElev # @jmg 20230512 testing this difference in elev assignement
+        lkgElev = resmod.Leakages[ol].BotElevFt
+        qstr = qleakDict[ol]
+        
+        # just loop over the layers between the bottom
+        # and central assignements for this outlet - take
+        # the highest one with water
+        lkgLyr = 9999
+        for l in range(resmod.Leakages[ol].MinLayer, resmod.Leakages[ol].CtrLayer+1):
+            if topElev > resmod.Layers[l].CtrElev: #self.Layers[l].Vol > 0.:
+                lkgLyr = l
+            else:
+                lkgLyr = resmod.Leakages[ol].MinLayer
+        if lkgLyr == 9999:
+            print("Can't continue with selective withdrawal - no appropriate\nlayer assignment for leakage zone %d could be found." %ol)
+            return(None)
+        if lkgLyr == resmod.Leakages[ol].MinLayer:
+            lkgElev = resmod.Leakages[ol].BotElevFt
+            
+            
+        # now do the outflow allocation to layers based on the outlet level and flow
+        if debug>=2:
+            print("Calling wd_env with parameters:   %d, %0.2f ft, %0.2f AF, %d, %0.2f ft" %(lkgLyr, lkgElev, qstr, topLyr, topElev))
+        
+        if dz>0:
+            [outByLyr, totOutThisLeak] = wd_env2(resmod, lkgElev, qstr, topLyr, grid, rho2, debug=debug)
+        else:
+            [outByLyr, totOutThisLeak] = wd_env(resmod, lkgLyr, lkgElev, qstr,topLyr, topElev, debug=debug) 
+        
+        if abs(totOutThisLeak-qstr)>TOL_AF: # != qstr:
+            print("WARNING!! Calculated outflow at gate %s does not match what was prescribed!" %og)
+            print("WARNING!! Calculated outflow: %0.2f  --- Prescribed outflow %0.2f" %(totOutThisLeak, qstr))
+        outqLyrDist[str(ol)+'l'] = [outByLyr]  # adding 'l' to key to indicate leakage
+        
+    # do the outflow distributions for river outlets
+    tmpFC = 0
+    if qoutRIV >0.:
+        tmpFC = qoutRIV
+        # which river outlets are open?
+        
+        for ri,rv in resmod.RiverOutlets.items(): # assuming this is ordered from the top down
+            if (tmpFC >0) and (resmod.WSE>rv.MinElev+1.) and rivDict[rv.ID]>0:
+                rivoutqi = min(tmpFC, rv.Capacity_CFS*CFStoAFD)
+                tmpFC = tmpFC - rivoutqi
+                
+                #print("Releasing %0.2f AF at river outlet %d" %(rivoutqi, ri))
+                
+                
+                for l in range(rv.MinLayer, rv.CtrLayer+1):
+                    if resmod.Layers[l].Vol > 0.:
+                        rivoLyr = l
+
+                if rivoLyr == rv.MinLayer:
+                    rivoEl = rv.MinElev
+                else:
+                    #rivoEl = rv.CtrElev
+                    #rivoEl = (0.5*rv.MinElev+0.5*rv.CtrElev)+rv.MinElev
+                    rivoEl = rv.MinElev
+                # rivoEl = rv.MinElev
+                # rivoLyr = rv.MinLayer
+                #print("River out layer: %d   River out elevation: %0.2f" %(rivoLyr, rivoEl))
+                # now do the outflow allocation to layers based on river outlet level and flow
+                if dz>0.:
+                    [outByLyr, totOutThisRiv] = wd_env2(resmod, rivoEl, rivoutqi, topLyr,grid, rho2, debug=debug)
+                else:
+                    [outByLyr, totOutThisRiv] = wd_env(resmod, rivoLyr, rivoEl, rivoutqi, topLyr, topElev, debug=debug)
+                outqLyrDist[str(ri)+'r'] = [outByLyr] # adding 'r' to indicate flow trhough river outlets
+    #else:
+   #     outqLyrDist['r'] = [None]
+        
+    # adding outflow distribution for flood release (over spillway/flood gates)
+    if (qoutSPILL+tmpFC) >0:
+        outqLyrDist['sp'] = [{topLyr: qoutSPILL+tmpFC}]
+        # if tmpFC > 0: # if there is required release above river outlet capacity, assume it goes over spillway
+        #     outqLyrDist['sp'] = [{topLyr: tmpFC}]
+
+    # retunr the updated dictionary of outflow by layers
+    return(outqLyrDist)
 
 def wd_env2(self, outletEl, qstr, topLyr, grid, rho2, debug=0):
     
@@ -1217,6 +1826,14 @@ def tcd_gate_open_opts(self, gate_level_opts):
     top_gate = max([o for o in self.Outlets if o < 99])
     if len(gate_level_opts)>3:
         gate_level_opts = gate_level_opts[0:3]
+        #gate_level_opts = gate_level_opts[1:4]
+    
+    # case where only the side gates are available - happens in CalSim scenarios with extreme drawdown
+    if gate_level_opts[0] == 0:
+        gatedict = {k:0 for k in self.Outlets if k <99}
+        gatedict[0] = self.Outlets[0].NumGates
+        gate_options.append(gatedict)
+        
     for gl in gate_level_opts:
         if (gl < top_gate) & (gl+1 in gate_level_opts):
             for ug in range(self.Outlets[gl+1].NumGates, -1, -1):
@@ -1240,6 +1857,13 @@ def tcd_gate_open_opts(self, gate_level_opts):
                             gatedict[gl] = lg
                             gatedict[gl+1] = ug
                             gate_options.append(gatedict)
+        else: # move to next set of gat level options so that 'ug' above can reference upper gate level
+            pass
+        # else:  # case where only the side gates are available - happens in CalSim scenarios with extreme drawdown
+        #     gatedict = {k:0 for k in self.Outlets if k <99}
+        #     gatedict[0] = self.Outlets[0].NumGates
+        #     gate_options.append(gatedict)
+            
     return(gate_options)
 #            else:
 #                for lg in range(self.Outlets[gl].NumGates+1):

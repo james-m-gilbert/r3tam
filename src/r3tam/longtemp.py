@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-LongTemp: Longitudinally-Mixed Reservoir Model
+LongTemp: Fully Mixed Reservoir Model
 
-Intended for simulations of shallow, well-mixed reservoirs with short (days)
+Intended for simulations of shallow,long, well-mixed reservoirs with short (days)
 travel/residence times typical of tailbay or reregulating reservoirs downtream
 of larger dams and reservoirs.
 
@@ -114,7 +114,7 @@ class LongTemp:
                                  9: 7.25, 10: 6.6, 11: 5.5, 12: 5}
         
     def __repr__(self):
-        return(f'{self.__class__.__name__} - Longitudinal reservoir: {self.FacilityName}')
+        return(f'{self.__class__.__name__} - Mixed reservoir: {self.FacilityName}')
     
     @classmethod
     def initialize_longmod(cls, config_fp, **kwargs):
@@ -296,9 +296,10 @@ class LongTemp:
         if 'inflow_final' in flow_temp_dict:
             #print(f"\t--updating {longmod.FacilityName} inflow to {flow_temp_dict['inflow_final']}")
             if flow_units=='AF':
-                invec.loc[colmp['inflow_final']] = flow_temp_dict['inflow_final']*AFtoM3
+                #invec.loc[colmp['inflow_final']] = flow_temp_dict['inflow_final']*AFtoM3
+                longmod.Inflow.DataFrame.loc[thisdt,colmp['inflow_final']] = flow_temp_dict['inflow_final']*AFtoM3
             else:
-                invec.loc[colmp['inflow_final']] = flow_temp_dict['inflow_final']
+                longmod.Inflow.DataFrame.loc[thisdt,colmp['inflow_final']] = flow_temp_dict['inflow_final']
             
         if 'inflowTemp_final' in flow_temp_dict:
             #print(f"\t--updating {longmod.FacilityName} inflow temperature to {flow_temp_dict['inflowTemp_final']}")
@@ -306,10 +307,11 @@ class LongTemp:
             if np.isnan(flow_temp_val):
                 flow_temp_val = 0.
             if temp_units=='DEG_F':
-                invec.loc[[colmp['inflowTemp_final']]] = (flow_temp_val-32.)/1.8
+                #invec.loc[colmp['inflowTemp_final']] = (flow_temp_val-32.)/1.8
+                longmod.Inflow.DataFrame.loc[thisdt,colmp['inflowTemp_final']] = (flow_temp_val-32.)/1.8
             else:
-                invec.loc[[colmp['inflowTemp_final']]] = flow_temp_val
-        longmod.Inflow.DataFrame.loc[thisdt] = invec
+                longmod.Inflow.DataFrame.loc[thisdt,colmp['inflowTemp_final']] = flow_temp_val
+        #longmod.Inflow.DataFrame.loc[thisdt] = invec
         
     def advance_longtemp(longmod, final=True):
         
@@ -329,6 +331,7 @@ class LongTemp:
             tmp_TimeStep = longmod.TimeStep + 1
             tmp_TimeStepDate = longmod.SimDates[tmp_TimeStep]
             time_index = tmp_time
+            #print(f"KWK date: {tmp_TimeStepDate}")
             
             met_vec = longmod.Met.DataFrame.loc[tmp_TimeStepDate]
             inflow_vec = longmod.Inflow.DataFrame.loc[tmp_TimeStepDate]
