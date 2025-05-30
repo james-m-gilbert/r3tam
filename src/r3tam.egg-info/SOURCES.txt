@@ -3,6 +3,7 @@ src/r3tam/__init__.py
 src/r3tam/constants.py
 src/r3tam/coupling.py
 src/r3tam/longtemp.py
+src/r3tam/make_plots.py
 src/r3tam/outflow.py
 src/r3tam/restemp.py
 src/r3tam/restemp_util.py
