@@ -80,7 +80,7 @@ kwk_obsT = {} # keswick obs releae temperature time series, by year
 kwk_simT = {} # keswick sim release temp by year
 #%%
 btime_all = time.perf_counter()
-for yr in range(2015, 2016): # 2023): #[2017]: #, 2015, 2016]:
+for yr in range(2019, 2020): # 2023): #[2017]: #, 2015, 2016]:
     
     btime_this = time.perf_counter()
     # reinitialize coupled model
@@ -103,7 +103,7 @@ for yr in range(2015, 2016): # 2023): #[2017]: #, 2015, 2016]:
         
     prev_gate_mode=''
 
-    main_targ_temp_degC = 14
+    main_targ_temp_degC = 13
     should_temp_degC = (58-32)/1.8
     targts_shape = coupling.create_temp_target_shaping(main_targ_temp_degC,
                                                        should_temp_degC, 
@@ -146,7 +146,7 @@ for yr in range(2015, 2016): # 2023): #[2017]: #, 2015, 2016]:
 
     gate_method = {}
     sha_sac_diff_dict = {}
-    for d in cpl.SimDates: #[0:200]: #[0:154]: #123 = May 2]:
+    for d in cpl.SimDates: #[0:154]: #123 = May 2]:
         
         print(d)
         
@@ -199,10 +199,13 @@ for yr in range(2015, 2016): # 2023): #[2017]: #, 2015, 2016]:
         # do an initial assessment - are temperatures form last time step's gate
         # config warm/cold compared to target?
         # get shasta temps using previous gate config
+        sha.CheckMinHead = False # temporarily disable min head checks for this call
         [q_o, t_o, e_o ] =rt.outflow.calcOutTemp(sha, thisOutFlowTot,
                                                  rivDict,
                                                  bypassFrac=bypassFrac,
                                                  gateDictOpt=prev_gate_dict)
+        sha.CheckMinHead = True
+        
         #init_sha_sac_diff = (targ_data[0]*1.8+32)-t_o
         if len(uppsac.Nodes[cpl.Temperature_Target.Target_Location].OutflowTemp)==0:
             init_sha_sac_diff = 1
@@ -270,7 +273,7 @@ for yr in range(2015, 2016): # 2023): #[2017]: #, 2015, 2016]:
         else:
             set_sha_targ = this_sha_targ_
         #sha.Outflow.DataFrame.loc[d, sha.Outflow.ColumnMap['tempTarg']] = set_sha_targ - prev_err_targ_adj_ #
-        sha.Outflow.DataFrame.loc[d, sha.Outflow.ColumnMap['tempTarg']] = (targ_data[0]*1.8+32)- running_sha_sac_diff + sha_targ_adj_
+        sha.Outflow.DataFrame.loc[d, sha.Outflow.ColumnMap['tempTarg']] = set_sha_targ # (targ_data[0]*1.8+32)- running_sha_sac_diff + sha_targ_adj_
         
         if gate_mode=='full':
             print("doing full gate selection...")
@@ -360,7 +363,11 @@ for yr in range(2015, 2016): # 2023): #[2017]: #, 2015, 2016]:
                 if abs(this_tdiff) < abs(best_error):
                     print(f">>>> added {gc} to best gates")
                     best_error = this_tdiff
-                    best_gates = gc
+                    
+                    if d.month in [9,10] and prev_gate_dict[0]==2 and gc[1]>prev_gate_dict[1]:
+                        best_gates = prev_gate_dict
+                    else:
+                        best_gates = gc
                     
                 if sha.Debug['Release'] >0:
                     print("       Target: %0.2f - %0.2f - %0.2f deg F" %(targ_data[0]+targ_data[1], targ_data[0], targ_data[0]-targ_data[2]))
@@ -392,6 +399,7 @@ for yr in range(2015, 2016): # 2023): #[2017]: #, 2015, 2016]:
             
             prop_gates = gate_dict 
             openlevels = [k for k,v in prop_gates.items() if v>0]
+            posslevels = rt.outflow.gate_level_opts(sha)
             lowestopen = min(openlevels)
             highestopen = max(openlevels)
             lowestposs = min(posslevels)
@@ -663,8 +671,10 @@ for yr in range(2015, 2016): # 2023): #[2017]: #, 2015, 2016]:
             # open
             if lowestopen==highestopen:
                 if lowestopen>0 and sum(prop_gates.values())<5:
-                    prop_gates[lowestopen] = 5
-                    new_gate_dict = prop_gates
+                    prop_gates[lowestopen] = 5               
+                else:
+                    pass
+                new_gate_dict = prop_gates
             else:
                 new_gate_dict = prop_gates
             

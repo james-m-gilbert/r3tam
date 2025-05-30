@@ -541,8 +541,9 @@ def tcd_alloc(resmod, gateDict, qoutPEN, qleakTot,  nPtSinks, lp_opt=False,
     if resmod.TimeStep==0:
         prevGate = gateDict
     else:
-        prevGate = resmod.PrevGateDict # sgateDict #resmod.Operations.GateOps[resmod.SimDates[resmod.TimeStep-1]]
-        
+        #prevGate = resmod.PrevGateDict # sgateDict #
+        prevGate = copy.deepcopy(resmod.Operations.GateOps[resmod.SimDates[resmod.TimeStep-1]])
+                                 
     if (gateDict[0]>0): # and (sum([prevGate[3],prevGate[2],prevGate[1]])<=0):
         # this is the first time the side gates are used 
         resmod.Operations.sidegate_only_cntr += 1
@@ -1178,7 +1179,7 @@ def selective_withdrawal(resmod, qout, bypass_frac, rivDict,
     
     # pick the gate config to use
     if 'gateDictOpt' in kwargs:
-        gateDict = kwargs['gateDictOpt']
+        gateDict = copy.deepcopy(kwargs['gateDictOpt'])
     else:
         gateDict = resmod.GateDict
     
@@ -2706,13 +2707,13 @@ def calcOutTemp(self, outflow, rivDict, nPtSinks=3, bypassFrac=0, **kwargs):
     
     # pick the gate config to use
     if 'gateDictOpt' in kwargs:
-        gateDict = kwargs['gateDictOpt']
+        opt_gateDict = copy.deepcopy(kwargs['gateDictOpt'])
         # releases
         outQLyrDist = selective_withdrawal(self, outflow, bypassFrac, rivDict,
                                            nPtSinks=nPtSinks, logging=False,
-                                           dz=0, gateDictOpt = gateDict)
+                                           dz=0, gateDictOpt = opt_gateDict)
     else:
-        gateDict = self.GateDict
+        base_gateDict = self.GateDict
         # releases
         outQLyrDist = selective_withdrawal(self, outflow, bypassFrac,
                                            rivDict,

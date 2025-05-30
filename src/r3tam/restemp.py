@@ -888,7 +888,11 @@ class Res(object):
             #print(f"\t\t {prev_temp_error}\n")
             increasing_errors = all(i < j for i, j in zip(
                 prev_temp_error, prev_temp_error[1:]))
-            increasing_errors2 = sum([abs(iv) for iv in prev_temp_error])>5. #len(prev_temp_error)*0.2
+            
+            if this_date.month>8:
+                increasing_errors2 = sum([abs(iv) for iv in prev_temp_error[0:4]])>1.25
+            else:
+                increasing_errors2 = sum([abs(iv) for iv in prev_temp_error])>3.25 #len(prev_temp_error)*0.2
             
             if resmod.TimeStep <= 0:
                 tdiff = 0
@@ -967,6 +971,15 @@ class Res(object):
             gate_levs = outflow.gate_level_opts(resmod)
             # print(gate_levs)
             gate_options = outflow.tcd_gate_open_opts(resmod, gate_levs)
+            
+            # add a check for elevation of gate levels - can't use previous
+            # gates if level drops below min head threshold
+            prev_gate_levs = [k for k,v in resmod.PrevGateDict.items() if v>0]
+            if len(set(prev_gate_levs) & set(gate_levs)) >0: # <-- checks if using previous gate levels is allowed under current conditions (is there overlap in the sets)
+                pass
+            else:
+                need_gate_change = True
+                gate_change_ready = True
 
             if this_ttarg == 99 or this_ttarg==99*1.8+32:
                 if gate_options == [] and gate_levs==[0]: #  use lowest gate outlet
