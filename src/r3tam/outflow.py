@@ -1825,9 +1825,9 @@ def gate_level_opts(self):
 def tcd_gate_open_opts(self, gate_level_opts):
     gate_options = []
     top_gate = max([o for o in self.Outlets if o < 99])
-    if len(gate_level_opts)>3:
-        gate_level_opts = gate_level_opts[0:3]
-        #gate_level_opts = gate_level_opts[1:4]
+    # if len(gate_level_opts)>3:
+    #     gate_level_opts = gate_level_opts[0:3]
+    #     #gate_level_opts = gate_level_opts[1:4]
     
     # case where only the side gates are available - happens in CalSim scenarios with extreme drawdown
     if gate_level_opts[0] == 0:
