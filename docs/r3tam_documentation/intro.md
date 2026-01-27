@@ -8,7 +8,7 @@ The R3TAM framework is flexible and may evolve as it is tested in various applic
 The contents of this documentation are organized into three main sections.
 
   *  Discussion: The first is a discussion of the concepts and motivation behind the R3TAM framework.
-  *  Referece: The second provides detailed descriptions of the model components, including the equations used and their representation and organization in the model code.
+  *  Reference: The second provides detailed descriptions of the model components, including the equations used and their representation and organization in the model code.
   * Tutorial: The third provides several tutorials that demonstrate the use of the R3TAM models in a standalone and coupled application. 
 
 ```{tableofcontents}
