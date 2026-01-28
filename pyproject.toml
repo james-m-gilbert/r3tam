@@ -11,6 +11,15 @@ authors = [
 description = "R3TAM: Rapid Reservoir-River Temperature Assessment Model"
 readme = "README.md"
 requires-python = ">=3.8"
+dependencies = [
+  "numpy<2.5,>=1.23.5",
+  "pandas>=2.3.3",
+  "PyYaml>=6.0.3",
+  "scipy",
+  "pymatreader",
+  "matplotlib!=3.6.1,>=3.4",
+  "seaborn=0.13.2"
+]
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: xxxxxx",
