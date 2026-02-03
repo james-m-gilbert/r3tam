@@ -18,7 +18,8 @@ dependencies = [
   "scipy",
   "pymatreader",
   "matplotlib!=3.6.1,>=3.4",
-  "seaborn"
+  "seaborn",
+  "sympy"
 ]
 classifiers = [
     "Programming Language :: Python :: 3",

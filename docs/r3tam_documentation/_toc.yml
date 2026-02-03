@@ -4,7 +4,7 @@
 format: jb-book
 root: intro
 options:
-  numbered: true
+  numbered: 4 #true
 chapters:
 - file: discussion
 - file: reference_
@@ -14,8 +14,9 @@ chapters:
 #  - file: reference\river\river_regression
 - file: tutorials_
   sections:
-#  - file: tutorials\shasta_standalone
-   - file: tutorials/keswick_standalone.md
+  - file: tutorials/getting_started
+  - file: tutorials/shasta_standalone
+  - file: tutorials/keswick_standalone
 #  - file: tutorials\sacriver_standalone
 #  - file: tutorials\coupled_historical
 #  - file: tutorials\coupled_forecast
