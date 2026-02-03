@@ -482,6 +482,8 @@ def distPointSinks(resmod,topElev, outletID, nPtSinks,**kwargs):
     if 'top_elev_override' in kwargs:
         thisTopElev = kwargs['top_elev_override']
         thisBotElev = thisTopElev - resmod.Outlets[outletID].GateHeight_m/FTtoM
+        #print(f"override top bot elev: {thisTopElev} - {thisBotElev}")
+        
     else:
         thisTopElev = resmod.Outlets[outletID].TopElevFt        
         thisBotElev = resmod.Outlets[outletID].BotElevFt
@@ -572,18 +574,20 @@ def tcd_alloc(resmod, gateDict, qoutPEN, qleakTot,  nPtSinks, lp_opt=False,
         
 
     # testing lowering of middle gate point sinks after being open for long 
-    # periods (>60 days)
+    # periods (e.g. >60 days)
     if resmod.TimeStepDate.timetuple().tm_yday==1 or resmod._time==0: # first day of the year, reset counter
         resmod.Operations.midgatedays = 0
     else:
-        if gateDict[2] >0:
+        if gateDict[2] >0: # and resmod.TimeStepDate.timetuple().tm_yday>120:
             resmod.Operations.midgatedays += 1
         else:
             resmod.Operations.midgatedays = 0
     #gate_history = resmod.Operations.GateOps
     if resmod.Operations.midgatedays > 60:
         adj_mid_ptsinks = True
-        midadjlevel = resmod.Outlets[2].CtrElevFt
+        midadjlevel = min(resmod.Outlets[2].CtrElevFt, 
+                          0.9*(resmod.WSE - resmod.Outlets[2].BotElevFt) 
+                          + resmod.Outlets[2].BotElevFt)
     else:
         adj_mid_ptsinks = False
 
@@ -613,7 +617,7 @@ def tcd_alloc(resmod, gateDict, qoutPEN, qleakTot,  nPtSinks, lp_opt=False,
                     gateDict[g] = 0
             else:
                 if gateDict[g_below]>0: # there's a gate open below
-                    if resmod.WSE >= resmod.Outlets[g].MinHead + resmod.Outlets[g].BotElevFt: 
+                    if resmod.WSE >= resmod.Outlets[g].BotElevFt:  # resmod.Outlets[g].MinHead +
                         # there's water covering outlet gate and there's a gate open below
                         gate_flow_onoff = 1  
                     else:
@@ -693,15 +697,20 @@ def tcd_alloc(resmod, gateDict, qoutPEN, qleakTot,  nPtSinks, lp_opt=False,
     elif len_openg==2: # two gate levels are open
         if openg[0]==2 and adj_mid_ptsinks:
             ptSinkElevsUpp, fracsUpp = distPointSinks(resmod, resmod.WSE, openg[0], 
-                                                      nPtSinks, top_elev_override=midadjlevel)
-            ptSinkElevsLow, fracsLow = distPointSinks(resmod,  resmod.WSE, openg[1], nPtSinks)
+                                                      nPtSinks, 
+                                                      top_elev_override=midadjlevel)
+            
+            ptSinkElevsLow, fracsLow = distPointSinks(resmod,  resmod.WSE,
+                                                      openg[1], nPtSinks)
+
+            
         elif openg[1]==2 and adj_mid_ptsinks:
             ptSinkElevsUpp, fracsUpp = distPointSinks(resmod,  resmod.WSE, openg[0], 
                                                       nPtSinks)
             ptSinkElevsLow, fracsLow = distPointSinks(resmod,  resmod.WSE, openg[1], 
                                                       nPtSinks,
                                                       top_elev_override=midadjlevel)
-        
+
         elif openg[1]==0 and adj_sdg_ptsinks:
             ptSinkElevsUpp, fracsUpp = distPointSinks(resmod,  resmod.WSE, openg[0], 
                                                       nPtSinks)
@@ -712,6 +721,7 @@ def tcd_alloc(resmod, gateDict, qoutPEN, qleakTot,  nPtSinks, lp_opt=False,
         else:
             ptSinkElevsUpp, fracsUpp = distPointSinks(resmod, resmod.WSE, openg[0], nPtSinks)
             ptSinkElevsLow, fracsLow = distPointSinks(resmod, resmod.WSE, openg[1], nPtSinks)
+
         
         quppfrac= glvlHdVels[openg[0]][3] # with 2 levels open, relative flow fraction from 
                                     # top can be used to distribute between the two levels

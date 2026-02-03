@@ -614,8 +614,11 @@ class Res(object):
                     print("assigning profile assuming 'tidy' format")
                     try:
                         # try assigning profiles assuming a long/tidy format (indexes are date and elevation, values temperature)
-                        idx1 = outProfiles.index.get_level_values(
-                            0).unique().get_loc(initDateStr, method='nearest')
+                        #idx1 = outProfiles.index.get_level_values(
+                        #    0).unique().get_loc(initDateStr, method='nearest')
+                        
+                        idx1 = outProfiles.index.get_level_values(0).unique().get_indexer([initDateStr], method='nearest')
+                        
                         profDat = outProfiles.index.get_level_values(0).unique()[
                             idx1]
 
@@ -1067,7 +1070,7 @@ class Res(object):
                 # need to set tailwater target temp
                 target_temp_tw = resmod.Outflow.DataFrame.loc[resmod.TimeStepDate,
                                                               targ_col_name]
-            elif 'tempTarg' in resmod.OutflowColumnMap:
+            elif 'tempTarg' in resmod.Outflow.ColumnMap:
                 targ_col_name = resmod.Outflow.ColumnMap['tempTarg']
                 # need to set tailwater target temp
                 target_temp_tw = resmod.Outflow.DataFrame.loc[resmod.TimeStepDate,
@@ -1271,8 +1274,13 @@ class Res(object):
                 try:
                     # try assigning profiles assuming a long/tidy format
                     # (indexes are date and elevation, values temperature)
-                    idx1 = outProfiles.index.get_level_values(0).unique().get_loc(initDateStr,
-                                                                                  method='nearest')
+                    
+                    # commented code below required for earlier version of pandas
+                    #idx1 = outProfiles.index.get_level_values(0).unique().get_loc(initDateStr,
+                    #                                                              method='nearest')
+                    
+                    idx1 = outProfiles.index.get_level_values(0).unique().get_indexer([initDateStr], method='nearest')
+                    
                     profDat = outProfiles.index.get_level_values(0).unique()[
                         idx1]
 
@@ -1514,7 +1522,7 @@ class Res(object):
         updT = {}
         for l, v in self.Layers.items():
             if v.Vol == 0:  # no water in layer - nothing to diffuse
-                updT[l] = np.NaN
+                updT[l] = np.nan
                 continue
             if l == 0:  # bottom layer
                 avT = (self.Layers[l+1].Vol*self.Layers[l+1].Temp +
@@ -1585,7 +1593,7 @@ class Res(object):
             
         for l, v in self.Layers.items():
             if v.Vol == 0:  # no water in layer - nothing to diffuse
-                updT[l] = np.NaN
+                updT[l] = np.nan
                 continue
             else:
                 tmpVol = 0.

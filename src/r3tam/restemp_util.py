@@ -605,6 +605,10 @@ def initVolTemp(resObj, initVol, initTempProf, profileTempUnits='degF', profileE
     initTempProfElevs = [_ for _ in initTempProf.index]    
     initTemps = [_ for _ in initTempProf.iloc[:,0]]
     
+    if isinstance(initTempProfElevs[0], tuple):
+        # have both dates and elevations in the index
+        initTempProfElevs = [_[1] for _ in initTempProfElevs]
+    
     for l,v in resObj.Layers.items():
         maxv = v.MaxVol
         if tmpVol - maxv >=0:
@@ -614,9 +618,9 @@ def initVolTemp(resObj, initVol, initTempProf, profileTempUnits='degF', profileE
             v.Vol = tmpVol
             tmpVol -= tmpVol
         if v.Vol == 0.:
-            v.Temp = np.NaN
+            v.Temp = np.nan
         else:
-            low = np.NaN
+            low = np.nan
             # if resObj.CalcMetric and profileTempUnits.upper() in ['DEGF','DEG_F','F']: #tempUnits =='degC':
             #     up = np.nanmax(initTempProf)*1.8+32.
             #     low = np.nanmin(initTempProf)*1.8 +32.

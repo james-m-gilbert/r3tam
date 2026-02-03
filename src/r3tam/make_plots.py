@@ -227,13 +227,23 @@ def plotStorageEvapCompare(resObj, viewSave='save', on_wy=False,**kwargs):
     
                 plt.close()
 
-def plotReleasesCompare(resObj, simReleasesDF, viewSave='save',
+def plotReleasesCompare(resObj,select_years='all', viewSave='save',
                         on_wy=True, predicted_gates=False, target_ts=None, 
                         target_tol=None,**kwargs):
+    
     
     runName = resObj.RunName 
     PROJ_DIR = resObj.ProjDir
     figoutDir = os.path.join(PROJ_DIR, 'outputs', 'figs')
+    
+    # input time series
+    simReleaseDF = resObj.Simulation_Results['ReleaseDF']
+    sim_rel_vol_col = [c for c in simReleaseDF.columns if 'Sim_Release' in c]
+    release_inputs = resObj.Outflow.DataFrame
+    release_inputs_colmap = resObj.Outflow.ColumnMap
+    obscm = resObj.Observations.OutflowColMap
+    
+   
     if not os.path.exists(figoutDir):
         os.mkdir(figoutDir)
         
@@ -258,14 +268,14 @@ def plotReleasesCompare(resObj, simReleasesDF, viewSave='save',
         obs_label = 'Obs'
     if on_wy:
         #simProfilesDF = np.copy(simProfilesDF, deep=True)
-        simrels_wys = simReleasesDF.index.map(lambda x: x.year+1 if x.month>9 else x.year)
+        simrels_wys = simReleaseDF.index.map(lambda x: x.year+1 if x.month>9 else x.year)
         yrs = np.unique(simrels_wys)
     else:
-        yrs = np.unique(simReleasesDF.index.map(lambda x: x.year))
+        yrs = np.unique(simReleaseDF.index.map(lambda x: x.year))
 
-
-    #viewSave ='save'
-    
+    if isinstance(select_years, list):
+        yrs = [y for y in yrs if y in select_years]
+        
     if viewSave=='save':
         plt.ioff()
     else:
@@ -273,14 +283,6 @@ def plotReleasesCompare(resObj, simReleasesDF, viewSave='save',
         
     obsRelease = resObj.Observations.OutflowDF
     obsHdr = resObj.Observations.OutflowColMap
-
-    
-    # input time series
-    simReleaseDF = resObj.Simulation_Results['ReleaseDF']
-    sim_rel_vol_col = [c for c in simReleaseDF.columns if 'Sim_Release' in c]
-    release_inputs = resObj.Outflow.DataFrame
-    release_inputs_colmap = resObj.Outflow.ColumnMap
-    obscm = resObj.Observations.OutflowColMap
     
     gateNames = [n for n in release_inputs_colmap['gates'].values()]
 #    allgateDict = {}
@@ -297,10 +299,10 @@ def plotReleasesCompare(resObj, simReleasesDF, viewSave='save',
     for y in yrs:
         
         if on_wy:
-            thisDateList = simReleasesDF[simrels_wys==y].index
+            thisDateList = simReleaseDF[simrels_wys==y].index
 
         else:
-            thisDateList = simReleasesDF[str(y)].index
+            thisDateList = simReleaseDF.loc[str(y)].index
         
         
         print("Making plot for year %d" %y)
@@ -369,7 +371,7 @@ def plotReleasesCompare(resObj, simReleasesDF, viewSave='save',
             #ax[0].plot(inpDF_AFF.index[0:len(simReleaseQ)], inpDF_AFF.Outflow_AF.iloc[0:len(simReleaseQ)], color='0.37', lw=0.7, label='Obs Shasta Release')
         
             #ax[0].plot(simReleasesDF[str(y)]['Release_AF'], color='orange', label='SimpleModel') 
-            ax[0].plot(simReleasesDF.loc[thisDateList, sim_rel_vol_col[0]], 
+            ax[0].plot(simReleaseDF.loc[thisDateList, sim_rel_vol_col[0]], 
                        color='darkorange', label=sim_label) 
             ax[0].plot(obsQ, color='0.37', lw=0.7, label="Observed")
         
@@ -382,7 +384,7 @@ def plotReleasesCompare(resObj, simReleasesDF, viewSave='save',
         #    ax[1].plot(inpDF_AFF.index[0:len(simReleaseT)], simReleaseT, color='orange', label='SimpleModel')
         #    ax[1].plot(inpDF_AFF.index[0:len(simReleaseQ)], inpDF_AFF.OutflowTemp_degF.iloc[0:len(simReleaseQ)], color='0.37',lw=0.7, label='CDEC SHD - Daily Mean')
             #ax[1].plot(simReleasesDF[str(y)]['ReleaseTemp_F'], color='orange', label='SimpleModel')
-            ax[1].plot(simReleasesDF.loc[thisDateList,sim_rel_vol_col[1]], 
+            ax[1].plot(simReleaseDF.loc[thisDateList,sim_rel_vol_col[1]], 
                        color='darkorange', label=sim_label, lw=1.2)
             ax[1].plot(obsT, color='0.37',lw=1, label=obs_label)
             
