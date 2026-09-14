@@ -954,7 +954,12 @@ class Res(object):
                     
                 else:
                     bypassFrac = 0.
-                    
+             
+            # if it's a full penstock/tCD bypass, just return now
+            if bypassFrac ==1:
+                gate_dict = {k: 0 for k,v in resmod.Outlets.items()}
+                return(['spec', gate_dict, targ_data, tdiff, rivDict, bypassFrac])
+            
             # check if it's been long enough between gate changes
             gate_change_ready = False
             if resmod.SimulationSpecs.DaysSinceLastGateChange >= resmod.SimulationSpecs.GateChgFreq:

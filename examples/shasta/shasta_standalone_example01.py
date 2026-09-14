@@ -62,10 +62,10 @@ simReleases = shasta.Simulation_Results['ReleaseDF']
 simProf = shasta.Simulation_Results['ProfilesDF']
 
 # the `make_plots` module has some convenient plotting options
-mkp.plotReleasesCompare(shasta, select_years=[2014, 2015], 
-                        viewSave='save', 
+mkp.plotReleasesCompare(shasta, select_years=[2015], 
+                        viewSave='view', 
                         obs_label = 'Obs Tailwater',
                         other_temp = 'temperature_other',
                         other_label = 'TCD Wt Avg',
                         on_wy=False) 
-mkp.plotProfilesCompare2(shasta, simProf, viewSave='save', on_wy=False)
+mkp.plotProfilesCompare2(shasta, simProf, viewSave='view', on_wy=False)

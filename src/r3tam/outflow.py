@@ -615,6 +615,8 @@ def tcd_alloc(resmod, gateDict, qoutPEN, qleakTot,  nPtSinks, lp_opt=False,
                     gate_flow_onoff = 0 # no gates open below and NOT meeting head reqmt - flow should be 0 thru gate
                     # update gate dict for this time step accordingly
                     gateDict[g] = 0
+                    # make sure there's something open below
+                    gateDict[g_below] = resmod.Outlets[g_below].NumGates
             else:
                 if gateDict[g_below]>0: # there's a gate open below
                     if resmod.WSE >= resmod.Outlets[g].BotElevFt:  # resmod.Outlets[g].MinHead +
@@ -802,6 +804,10 @@ def tcd_alloc(resmod, gateDict, qoutPEN, qleakTot,  nPtSinks, lp_opt=False,
         #print(these_temps)
         ps_temps = np.interp(ps_elevs, modElevs, these_temps) #.reverse() needed because np.interp needs values in ascending order
         
+        # in case the interpolation returns nan, replace nan value with the 
+        # profile max value - this assumes the nan is because the interpolation
+        # hit an empty layer at the top that reverted to temp = nan
+        ps_temps = [np.nanmax(these_temps) if np.isnan(pst) else pst for pst in ps_temps]
         #print("Interpolated temps:")
         #print(ps_temps)
 
@@ -813,8 +819,8 @@ def tcd_alloc(resmod, gateDict, qoutPEN, qleakTot,  nPtSinks, lp_opt=False,
         
         rhs = [1.0, temp_targ]
         clist = [-1*temp_targ]+[pt for pt in ps_temps]
-        # print("c: ")
-        # print(clist)
+        #print("c: ")
+        #print(clist)
         
         bounds = [[0,1]] + target_bounds
         
@@ -908,7 +914,10 @@ def tcd_alloc(resmod, gateDict, qoutPEN, qleakTot,  nPtSinks, lp_opt=False,
                         return
                     tmplq_[rli] += rlv
                     totQ_ += rlv
-        [lkg_totOutQ, lkg_outTemp, lkg_totOutE] = outflow_dist_forGateSelect(resmod,tmplq_)
+        if totQ_ > 0.0: # check that there is leakage
+            [lkg_totOutQ, lkg_outTemp, lkg_totOutE] = outflow_dist_forGateSelect(resmod,tmplq_)
+        else:  # there isn't leakage - ie. all release through river outlets
+            [lkg_totOutQ, lkg_outTemp, lkg_totOutE] = [0.0, 0.0, 0.0]
         
         # update target to take into account leakage
         temp_targ_TCD = (temp_targ*(lkg_totOutQ + qoutTCD)-(lkg_totOutE))/qoutTCD
@@ -1352,7 +1361,19 @@ def selective_withdrawal(resmod, qout, bypass_frac, rivDict,
         # which river outlets are open?
         
         for ri,rv in resmod.RiverOutlets.items(): # assuming this is ordered from the top down
-            if (tmpFC >0) and (resmod.WSE>rv.MinElev+1.) and rivDict[rv.ID]>0:
+            
+            if resmod.RiverOutlets[ri].Override and rivDict[rv.ID]>0:
+                rivoutqi = tmpFC
+                tmpFC = tmpFC - rivoutqi
+                rivoEl = (resmod.WSE-resmod.Layers[0].MinElev)*0.5 + resmod.Layers[0].MinElev
+                
+                for l in range(0, rv.CtrLayer+1):
+                    if resmod.Layers[l].Vol > 0.:
+                        rivoLyr = l
+                
+                [outByLyr, totOutThisRiv] = wd_env(resmod, rivoLyr, rivoEl, rivoutqi, topLyr, topElev, debug=debug)
+        
+            elif (tmpFC >0) and (resmod.WSE>rv.MinElev+1.) and rivDict[rv.ID]>0:
                 rivoutqi = min(tmpFC, rv.Capacity_CFS*CFStoAFD)
                 tmpFC = tmpFC - rivoutqi
                 
@@ -2873,7 +2894,7 @@ def outflow_check_and_dist(self,outQLyrDist, assignedOutQ ):
         
     # check again if outflow balance is correct
     if abs(totOutQ - assignedOutQ) > 0.0001:
-        raise ValueError(f"Specified outflow {assignedOutQ} and calcualted outflow {totOutQ} don't match!!")
+        raise ValueError(f"Specified outflow {assignedOutQ} and calculated outflow {totOutQ} don't match!!")
     if totOutQ>0:
         outTemp = totOutE/totOutQ
     else:
