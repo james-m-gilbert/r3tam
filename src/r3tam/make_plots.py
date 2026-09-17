@@ -173,7 +173,7 @@ def plotStorageEvapCompare(resObj, viewSave='save', on_wy=False,**kwargs):
             thisDateList = simStoragesDF[simsto_wys==y].index
 
         else:
-            thisDateList = simStoragesDF[str(y)].index        
+            thisDateList = simStoragesDF.loc[str(y)].index        
 
         this_obs_sto = obsStorage.loc[thisDateList,:]
         this_sim_sto = simStoragesDF.loc[thisDateList,:]

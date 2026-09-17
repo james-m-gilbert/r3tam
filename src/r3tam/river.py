@@ -260,6 +260,7 @@ class River(object):
         from matplotlib.ticker import (MultipleLocator, FormatStrFormatter,
                                        AutoMinorLocator)
         
+        
         import matplotlib.dates as mdates
         years = mdates.YearLocator()   # every year
         fiveyears = mdates.YearLocator(5)

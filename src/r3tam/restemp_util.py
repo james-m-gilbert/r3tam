@@ -201,7 +201,6 @@ def setupOutlets(resObj, inputs):
         rout.MaxElev = te_ft
         rout.CtrElev = ce_ft
         rout.CapacityUnits = capUnits
-        rout.Override = False #jmg@2026-05-18: added to allow runs with CAlSim to proceed under extreme low conditions
         
         resObj.RiverOutlets[ro] = rout
         
@@ -1028,7 +1027,7 @@ def getTimeSeries(resmod, inputs):
             hdrDict['outflow_final_units'] = outflowunits
             
         if 'rivOutFlow' in hdrDict:
-            if hdrDict['rivOutFlow'] == '' or hdrDict['rivOutFlow']!=None:
+            if hdrDict['rivOutFlow'] == '' or hdrDict['rivOutFlow']==None:
                 df['RiverOutlet_Flow'] = [0 for _ in df[hdrDict['outflow']]]
                 hdrDict['rivOutFlow'] = 'RiverOutlet_Flow'
                 

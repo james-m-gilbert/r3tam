@@ -26,10 +26,10 @@ import os
 #%% Set the configuration file locations
 # read in the config files for each model
 curdir = os.path.abspath(os.curdir)
-config_fp01 = os.path.join(curdir, r'../examples/shasta_report/shasta_standalone_report.yaml')
-config_fp02 = os.path.join(curdir, r'../examples/keswick/kwk_input.v20240729.yaml.yaml')
-config_fp03 = os.path.join(curdir, r'../examples/sac_river/uppsac_river_kwk2rdb.yaml')
-couple_config_fp = os.path.join(curdir, r'./coupled_shakwkriv.yaml')
+config_fp01 = os.path.join(curdir, r'../shasta_report/shasta_standalone_report.yaml')
+config_fp02 = os.path.join(curdir, r'../keswick/kwk_input.v20240729.yaml')
+config_fp03 = os.path.join(curdir, r'../sac_river/uppsac_river_kwk2rdb.yaml')
+couple_config_fp = os.path.join(curdir, r'coupled_shakwkriv.yaml')
 #%% Initialize the component models and the coupling scheme
 sha = rt.Res.initialize_model(config_fp01, profile_temp_units='degF')
 kwk = lt.LongTemp.initialize_longmod(config_fp02, showInit=True)
@@ -50,8 +50,8 @@ for d in cpl.SimDates:
     sha.advance_restemp()
     #[totQ2, outT, outE] = sha.advance_swd(final=True)
     [totQ2, outT, outE] = sha.advance_swd(final=True, return_vals=True)
-    if np.isnan(outT) or (outT==0): # couple fo instances in early 2001 when releases are ~0 - so no temp - have to give some useful number here
-        outT = 48.0 
+    # if np.isnan(outT) or (outT==0): # couple fo instances in early 2001 when releases are ~0 - so no temp - have to give some useful number here
+    #     outT = 48.0 
     kwk_in_dict = {'inflow_final': totQ2, 'inflowTemp_final': outT}
     kwk.set_inflow_temps(kwk_in_dict, temp_units='DEG_F', flow_units='AF')
     kwk.advance_longtemp(final=True)
@@ -85,10 +85,15 @@ simT = pnd.DataFrame([_ for _ in kwk.StorageTemps[1:]], index=kwk.SimDates[0:len
 outTcol = kwk.Observations.OutflowColMap['obs_outtemp_final']
 obsT = pnd.DataFrame(kwk.Observations.OutflowDF.loc[kwk.SimDates[0:len(simT)],outTcol[0]])
 
-proj_dir = r'D:\02_Projects\SacTemp\SimTemp\ResTempPkg\example\shasta_keswick_sac'
-outdir = os.path.join(proj_dir, 'outputs','figs')
+proj_dir = curdir
+outdir = os.path.join(proj_dir, 'outputs') 
 if not os.path.exists(outdir):
     os.mkdir(outdir)
+    
+figdir = os.path.join(outdir, 'figs')
+if not os.path.exists(figdir):
+    os.mkdri(figdir)
+    
 todaystr = dt.date.today().strftime('%Y%m%d')
 
 #%% make Keswick release temperature comparison plots
@@ -198,11 +203,11 @@ for y in years: #range(2000,2023):
         sns.despine()
 
         if y=='all':
-            plt.savefig(os.path.join(outdir, 
+            plt.savefig(os.path.join(figdir, 
                                      f'{todaystr}DRAFT_Keswick_ReleaseTempsHindcast_allyears.png'),
                         dpi=600) # kwargs)
         else:
-            plt.savefig(os.path.join(outdir, 
+            plt.savefig(os.path.join(figdir, 
                                      f'{todaystr}DRAFT_Keswick_ReleaseTempsHindcast_{y}.png'),
                         dpi=600) 
         plt.close()
@@ -265,12 +270,8 @@ for y in yrs:
     error_dict[y] = month_stats
     
 run_name = 'KWKcoupledhindcast'
-PROJ_DIR = proj_dir
-outDir = os.path.join(PROJ_DIR, 'outputs')
-if not os.path.exists(outDir):
-    os.mkdir(outDir)
 
-stats_dir = os.path.join(PROJ_DIR, 'outputs', 'stats')
+stats_dir = os.path.join(outdir, 'stats')
 if not os.path.exists(stats_dir):
     os.mkdir(stats_dir)
     
@@ -304,7 +305,6 @@ alldf.to_csv(outfp, header=True)
 #%% make sac river plots
 df = uppsac.combine_to_df()
 
-figdir = outdir # os.path.join(os.path.dirname(config_fp),'outputs','figs')
 plt.ioff()
 yrstoplot = list(range(2000, 2023)) + ['']
 for y in yrstoplot: #range(2000, 2023):
@@ -385,21 +385,5 @@ check_shaout_temp = sha.Simulation_Results['ReleaseDF'].loc[:,'Sim_Release_Temp_
 plt.plot(check_kwkin_temp)
 plt.plot(check_shaout_temp)
 
-#%% plot keswick
-
-# sim_kwk =  pnd.DataFrame([_ for _ in kwk.StorageTemps[1:]], index=kwk.SimDates[0:len(kwk.StorageTemps[1:])])
-# obs_kwk = kwk.Observations.OutflowDF.loc[sim_kwk.index, 'ObsOutTemp']
-
-# fig, ax = plt.subplots(1,1, figsize=(10,6))
-# ax.plot(obs_kwk, label='Obs Temp')
-# ax.plot(sim_kwk, label='Sim Temp')
-#%%
-
-# sim_ccr = uppsac.Nodes['ccr'].OutflowTemp
-# obs_ccr = uppsac.Nodes['ccr'].Observations.DataFrame.loc[cpl.SimDates, 'CCR_degF']
-# sim_ccr_degF = [_*1.8+32 for _ in sim_ccr]
-# fig, ax = plt.subplots(1,1, figsize=(10,6))
-# ax.plot(obs_ccr, label='Obs Temp')
-# ax.plot(cpl.SimDates, sim_ccr_degF, label='Sim Temp')
 
 
